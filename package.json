@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@nuxt/ui": "^3.0.2",
+    "@vueuse/core": "^13.0.0"
+  }
+}
