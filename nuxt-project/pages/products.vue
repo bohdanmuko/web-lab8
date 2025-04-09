@@ -1,377 +1,424 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { h, resolveComponent, onMounted, computed, ref } from 'vue'
+import { upperFirst } from 'scule'
+import type { TableColumn } from '@nuxt/ui'
+
+useHead({
+  title: 'Список продуктів'
+})
+
+// Розв'язання компонентів Nuxt UI
+const UButton = resolveComponent('UButton')
+const UCheckbox = resolveComponent('UCheckbox')
+const UBadge = resolveComponent('UBadge')
+const UDropdownMenu = resolveComponent('UDropdownMenu')
+const ULoading = resolveComponent('ULoading') // Для завантажувального індикатора
+
+const toast = useToast()
 
 type Product = {
   id: number
   title: string
   description: string
   price: number
+  discountPercentage: number
   rating: number
+  stock: number
   brand: string
   category: string
   thumbnail: string
+  images: string[]
 }
 
 const data = ref<Product[]>([])
-const searchQuery = ref('')
-const currentPage = ref(1)
-const itemsPerPage = 5
-const sortColumn = ref('title')
-const sortDirection = ref<'asc' | 'desc'>('asc')
+const loading = ref(true)
+const progress = ref(0)
+// Використовуємо тип number для браузерного setInterval
+const progressInterval = ref<number | null>(null)
 
-// Fetch data from API
-onMounted(async () => {
+const currentPage = ref(1)
+const rowsPerPage = ref(10)
+
+// Динамічний список варіантів для кількості рядків на сторінці
+const rowsPerPageOptions = [5, 10, 20, 50]
+
+// Обчислюваний список даних для поточної сторінки
+const paginatedData = computed(() => {
+  const start = (currentPage.value - 1) * rowsPerPage.value
+  const end = start + rowsPerPage.value
+  return data.value.slice(start, end)
+})
+
+// Загальна кількість сторінок
+const totalPages = computed(() => Math.ceil(data.value.length / rowsPerPage.value))
+
+// Функція для зміни сторінки
+function changePage(page: number) {
+  if (page >= 1 && page <= totalPages.value) {
+    currentPage.value = page
+  }
+}
+
+// Функція для зміни кількості рядків на сторінці
+function updateRowsPerPage(newRowsPerPage: number | string) {
+  rowsPerPage.value = Number(newRowsPerPage)
+  currentPage.value = 1 // Повертаємося на першу сторінку
+}
+
+// Завантаження даних
+async function fetchProducts() {
+  loading.value = true
+  progress.value = 0
+
+  progressInterval.value = window.setInterval(() => {
+    progress.value += Math.random() * 10
+    if (progress.value >= 90) {
+      progress.value = 90
+      if (progressInterval.value !== null) {
+        clearInterval(progressInterval.value)
+      }
+    }
+  }, 200)
+
   try {
-    const res = await fetch('https://dummyjson.com/products')
-    const json = await res.json()
-    data.value = json.products
+    const response = await fetch('https://dummyjson.com/products?limit=100')
+    const result = await response.json()
+    data.value = result.products
+
+    progress.value = 100
+    setTimeout(() => {
+      loading.value = false
+    }, 300)
   } catch (error) {
     console.error('Error fetching products:', error)
-  }
-})
-
-// Filter data based on search query
-const filteredData = computed(() => {
-  if (!searchQuery.value) return data.value
-
-  const query = searchQuery.value.toLowerCase()
-  return data.value.filter(product =>
-      product.title.toLowerCase().includes(query)
-  )
-})
-
-// Sort data based on column and direction
-const sortedData = computed(() => {
-  return [...filteredData.value].sort((a, b) => {
-    const aValue = a[sortColumn.value as keyof Product]
-    const bValue = b[sortColumn.value as keyof Product]
-
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
-      return sortDirection.value === 'asc'
-          ? aValue.localeCompare(bValue)
-          : bValue.localeCompare(aValue)
-    } else {
-      return sortDirection.value === 'asc'
-          ? Number(aValue) - Number(bValue)
-          : Number(bValue) - Number(aValue)
+    toast.add({
+      title: 'Помилка завантаження',
+      color: 'error',
+      icon: 'i-lucide-alert-circle'
+    })
+    loading.value = false
+  } finally {
+    if (progressInterval.value !== null) {
+      clearInterval(progressInterval.value)
     }
-  })
-})
-
-// Paginate data
-const paginatedData = computed(() => {
-  const startIndex = (currentPage.value - 1) * itemsPerPage
-  return sortedData.value.slice(startIndex, startIndex + itemsPerPage)
-})
-
-// Total pages
-const totalPages = computed(() =>
-    Math.ceil(filteredData.value.length / itemsPerPage)
-)
-
-// Handle sorting
-const handleSort = (column: string) => {
-  if (sortColumn.value === column) {
-    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortColumn.value = column
-    sortDirection.value = 'asc'
   }
 }
 
-// Get rating color
-const getRatingColor = (rating: number) => {
-  return rating < 4.5 ? 'red' : 'green'
+onMounted(() => {
+  fetchProducts()
+})
+
+
+const columns: TableColumn<Product>[] = [
+  {
+    id: 'select',
+    header: ({ table }) => h(UCheckbox, {
+      'modelValue': table.getIsSomePageRowsSelected() ? 'indeterminate' : table.getIsAllPageRowsSelected(),
+      'onUpdate:modelValue': (value: boolean | 'indeterminate') => table.toggleAllPageRowsSelected(!!value),
+      'aria-label': 'Select all'
+    }),
+    cell: ({ row }) => h(UCheckbox, {
+      'modelValue': row.getIsSelected(),
+      'onUpdate:modelValue': (value: boolean | 'indeterminate') => row.toggleSelected(!!value),
+      'aria-label': 'Select row'
+    }),
+    enableSorting: false,
+    enableHiding: false
+  },
+  {
+    accessorKey: 'title',
+    header: 'Назва',
+    cell: ({ row }) => h('div', { class: 'font-medium' }, row.getValue('title'))
+  },
+  {
+    accessorKey: 'description',
+    header: 'Опис',
+    cell: ({ row }) => h('div', { class: 'max-w-md truncate' }, row.getValue('description'))
+  },
+  {
+    accessorKey: 'price',
+    header: 'Ціна',
+    cell: ({ row }) => {
+      const price = Number.parseFloat(row.getValue('price'))
+      const formatted = new Intl.NumberFormat('uk-UA', {
+        style: 'currency',
+        currency: 'USD'
+      }).format(price)
+      return h('div', { class: 'font-medium' }, formatted)
+    }
+  },
+  {
+    accessorKey: 'rating',
+    header: 'Оцінка',
+    cell: ({ row }) => {
+      const rating = Number(row.getValue('rating'))
+      const textColor = rating >= 4.5 ? 'text-green-500' : 'text-red-500'
+      return h('div', { class: `font-medium ${textColor}` }, rating.toFixed(1))
+    }
+  },
+  {
+    accessorKey: 'brand',
+    header: 'Бренд',
+    cell: ({ row }) => h('div', {}, row.getValue('brand'))
+  },
+  {
+    accessorKey: 'category',
+    header: 'Категорія',
+    cell: ({ row }) => h(UBadge, { class: 'capitalize', variant: 'subtle', color: 'info' }, () => row.getValue('category'))
+  },
+  {
+    accessorKey: 'thumbnail', // Фотографії
+    header: 'Фото',
+    cell: ({ row }) => h('img', {
+      src: row.getValue('thumbnail'),
+      alt: row.getValue('title'),
+      class: 'w-24 h-24 object-cover rounded',
+      style: 'width: 100px; height: 100px;'
+    }),
+    enableSorting: false
+  },
+  {
+    id: 'actions', // Дії (три точки)
+    enableHiding: false,
+    cell: ({ row }) => {
+      const items = [
+        { type: 'label', label: 'Дії' },
+        {
+          label: 'Копіювати ID',
+          onSelect() {
+            navigator.clipboard.writeText(row.original.id.toString())
+            toast.add({
+              title: 'ID скопійовано!',
+              color: 'success',
+              icon: 'i-lucide-circle-check'
+            })
+          }
+        },
+        {
+          label: row.getIsExpanded() ? 'Згорнути' : 'Розгорнути',
+          onSelect() {
+            row.toggleExpanded()
+          }
+        },
+        { type: 'separator' },
+        { label: 'Переглянути деталі' },
+        { label: 'Додати в кошик' }
+      ]
+
+      return h('div', { class: 'text-right' }, h(UDropdownMenu, {
+        'content': { align: 'end' },
+        items,
+        'aria-label': 'Actions dropdown'
+      }, () => h(UButton, {
+        'icon': 'i-lucide-ellipsis-vertical',
+        'color': 'neutral',
+        'variant': 'ghost',
+        'class': 'ml-auto',
+        'aria-label': 'Actions dropdown'
+      })))
+    }
+  }
+]
+
+const table = useTemplateRef('table')
+
+function randomize() {
+  data.value = [...data.value].sort(() => Math.random() - 0.5)
 }
+
+function reloadData() {
+  fetchProducts()
+}
+
+const skeletonRows = Array(10).fill(0).map((_, i) => i)
 </script>
 
 <template>
-  <div class="product-table-container">
-    <div class="search-container">
-      <input
-          v-model="searchQuery"
-          class="search-input"
-          placeholder="Пошук по назві..."
-      />
+  <div class="flex-1 divide-y divide-(--ui-border-accented) w-full h-screen">
+    <!-- Лінія прогресу при завантаженні -->
+    <div v-if="loading" class="w-full h-1 bg-gray-200 dark:bg-gray-700 fixed top-0 left-0 z-50">
+      <div class="h-1 bg-blue-500 transition-all duration-300 ease-out" :style="{ width: `${progress}%` }"></div>
     </div>
 
-    <table class="product-table">
-      <thead>
-      <tr>
-        <th @click="handleSort('title')" class="sortable-header">
-          Назва
-          <span class="sort-icon" v-if="sortColumn === 'title'">
-              {{ sortDirection === 'asc' ? '▲' : '▼' }}
-            </span>
-        </th>
-        <th @click="handleSort('description')" class="sortable-header">
-          Опис
-          <span class="sort-icon" v-if="sortColumn === 'description'">
-              {{ sortDirection === 'asc' ? '▲' : '▼' }}
-            </span>
-        </th>
-        <th @click="handleSort('price')" class="sortable-header">
-          Ціна
-          <span class="sort-icon" v-if="sortColumn === 'price'">
-              {{ sortDirection === 'asc' ? '▲' : '▼' }}
-            </span>
-        </th>
-        <th @click="handleSort('rating')" class="sortable-header">
-          Оцінка
-          <span class="sort-icon" v-if="sortColumn === 'rating'">
-              {{ sortDirection === 'asc' ? '▲' : '▼' }}
-            </span>
-        </th>
-        <th @click="handleSort('brand')" class="sortable-header">
-          Бренд
-          <span class="sort-icon" v-if="sortColumn === 'brand'">
-              {{ sortDirection === 'asc' ? '▲' : '▼' }}
-            </span>
-        </th>
-        <th @click="handleSort('category')" class="sortable-header">
-          Категорія
-          <span class="sort-icon" v-if="sortColumn === 'category'">
-              {{ sortDirection === 'asc' ? '▲' : '▼' }}
-            </span>
-        </th>
-        <th>Фото</th>
-      </tr>
-      </thead>
-      <tbody>
-      <tr v-for="product in paginatedData" :key="product.id">
-        <td>{{ product.title }}</td>
-        <td class="description-cell">{{ product.description }}</td>
-        <td>₴{{ product.price }}</td>
-        <td>
-            <span class="badge" :class="getRatingColor(product.rating)">
-              {{ product.rating }}
-            </span>
-        </td>
-        <td>{{ product.brand }}</td>
-        <td>{{ product.category }}</td>
-        <td>
-          <img
-              :src="product.thumbnail"
-              width="100"
-              height="100"
-              alt="Фото продукту"
-              class="product-image"
-          />
-        </td>
-      </tr>
-      <tr v-if="paginatedData.length === 0">
-        <td colspan="7" class="empty-message">Немає даних для відображення</td>
-      </tr>
-      </tbody>
-    </table>
+    <div class="flex items-center gap-2 px-4 py-3.5 overflow-x-auto">
+      <UInput
+          :model-value="(table?.tableApi?.getColumn('title')?.getFilterValue() as string)"
+          class="max-w-sm min-w-[12ch]"
+          placeholder="Пошук за назвою..."
+          @update:model-value="table?.tableApi?.getColumn('title')?.setFilterValue($event)"
+      />
+      <UButton color="neutral" label="Випадково" @click="randomize" />
+      <UButton color="info" label="Оновити" icon="i-lucide-refresh-cw" @click="reloadData" />
 
-    <div class="pagination" v-if="totalPages > 1">
-      <button
-          class="pagination-button"
-          :disabled="currentPage === 1"
-          @click="currentPage = Math.max(1, currentPage - 1)"
+      <select
+          v-model="rowsPerPage"
+          @change="updateRowsPerPage(($event.target as HTMLSelectElement).value)"
+          class="border rounded px-2 py-1"
       >
-        Попередня
-      </button>
-      <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
-      <button
-          class="pagination-button"
-          :disabled="currentPage === totalPages"
-          @click="currentPage = Math.min(totalPages, currentPage + 1)"
+        <option v-for="option in rowsPerPageOptions" :key="option" :value="option">
+          {{ option }} рядків
+        </option>
+      </select>
+
+      <UDropdownMenu
+          :items="table?.tableApi?.getAllColumns().filter(column => column.getCanHide()).map(column => ({
+          label: upperFirst(column.id),
+          type: 'checkbox' as const,
+          checked: column.getIsVisible(),
+          onUpdateChecked(checked: boolean) {
+            table?.tableApi?.getColumn(column.id)?.toggleVisibility(!!checked)
+          },
+          onSelect(e?: Event) {
+            e?.preventDefault()
+          }
+        }))"
+          :content="{ align: 'end' }"
       >
-        Наступна
-      </button>
+        <UButton
+            label="Колонки"
+            color="neutral"
+            variant="outline"
+            trailing-icon="i-lucide-chevron-down"
+            class="ml-auto"
+            aria-label="Columns select dropdown"
+        />
+      </UDropdownMenu>
+    </div>
+
+    <!-- Секція таблиці -->
+    <div v-if="loading" class="relative w-full h-full">
+      <!-- Loading overlay -->
+      <div class="absolute inset-0 flex flex-col items-center justify-center bg-white dark:bg-gray-800 bg-opacity-80 dark:bg-opacity-80 z-10">
+        <ULoading size="lg" class="mb-4" />
+        <p class="text-sm text-gray-600 dark:text-gray-300">Завантаження даних про продукти...</p>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ Math.round(progress) }}% завершено</p>
+      </div>
+      <!-- Skeleton таблиця -->
+      <table class="w-full table-auto">
+        <thead>
+        <tr class="border-b border-gray-200 dark:border-gray-700">
+          <th class="p-3 text-left">
+            <div class="h-5 w-5 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </th>
+          <th class="p-3 text-left">
+            <div class="h-5 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </th>
+          <th class="p-3 text-left">
+            <div class="h-5 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </th>
+          <th class="p-3 text-left">
+            <div class="h-5 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </th>
+          <th class="p-3 text-left">
+            <div class="h-5 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </th>
+          <th class="p-3 text-left">
+            <div class="h-5 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </th>
+          <th class="p-3 text-left">
+            <div class="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </th>
+          <th class="p-3 text-left">
+            <div class="h-5 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </th>
+          <th class="p-3 text-left">
+            <div class="h-5 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr v-for="index in skeletonRows" :key="index" class="border-b border-gray-200 dark:border-gray-700">
+          <td class="p-3">
+            <div class="h-5 w-5 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </td>
+          <td class="p-3">
+            <div class="h-24 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </td>
+          <td class="p-3">
+            <div class="h-5 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </td>
+          <td class="p-3">
+            <div class="h-5 w-48 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </td>
+          <td class="p-3">
+            <div class="h-5 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </td>
+          <td class="p-3">
+            <div class="h-5 w-10 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </td>
+          <td class="p-3">
+            <div class="h-5 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </td>
+          <td class="p-3">
+            <div class="h-5 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </td>
+          <td class="p-3">
+            <div class="h-5 w-24 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- UTable займає всю доступну висоту -->
+    <UTable
+        v-else
+        ref="table"
+        :data="paginatedData"
+        :columns="columns"
+        sticky
+        class="h-full"
+    >
+      <template #expanded="{ row }">
+        <div class="p-4 bg-gray-50 dark:bg-gray-800">
+          <div class="flex gap-4">
+            <div class="flex space-x-2">
+              <img v-for="(image, idx) in row.original.images.slice(0, 3)" :key="idx"
+                   :src="image" :alt="`${row.original.title} - image ${idx + 1}`"
+                   class="w-32 h-32 object-cover rounded"
+              />
+            </div>
+            <div>
+              <h3 class="text-lg font-semibold">{{ row.original.title }}</h3>
+              <p class="text-sm text-gray-600 dark:text-gray-300 mt-1">{{ row.original.description }}</p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <div>
+                  <span class="text-sm font-medium">Знижка: </span>
+                  <UBadge color="success">{{ row.original.discountPercentage }}% off</UBadge>
+                </div>
+                <div>
+                  <span class="text-sm font-medium">Залишок: </span>
+                  <UBadge :color="row.original.stock > 50 ? 'success' : 'warning'">{{ row.original.stock }} шт.</UBadge>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+    </UTable>
+
+    <!-- Елементи пагінації -->
+    <div class="flex justify-between items-center px-4 py-3">
+      <span class="text-sm text-gray-600 dark:text-gray-300">
+        Сторінка {{ currentPage }} з {{ totalPages }}
+      </span>
+      <div class="flex items-center gap-2">
+        <UButton
+            :disabled="currentPage === 1"
+            label="Попередня"
+            @click="changePage(currentPage - 1)"
+        />
+        <UButton
+            :disabled="currentPage === totalPages"
+            label="Наступна"
+            @click="changePage(currentPage + 1)"
+        />
+      </div>
+    </div>
+
+    <div class="px-4 py-3.5 text-sm text-(--ui-text-muted)">
+      {{ table?.tableApi?.getFilteredSelectedRowModel().rows.length || 0 }} з
+      {{ table?.tableApi?.getFilteredRowModel().rows.length || 0 }} рядків вибрано.
     </div>
   </div>
 </template>
-
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
-
-.product-table-container {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 1000px; /* Add this line to make the table narrower */
-  margin: 0 auto; /* Center the table */
-  flex: 1;
-  font-family: 'Poppins', sans-serif;
-  background-color: #f8f9ff;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-}
-
-.search-container {
-  display: flex;
-  padding: 20px;
-  background: linear-gradient(135deg, #1e338d, #180037);
-}
-
-.search-input {
-  max-width: 500px;
-  width: 100%;
-  padding: 12px 16px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: 'Poppins', sans-serif;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  outline: none;
-  margin: 0 auto;
-}
-
-.search-input:focus {
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
-}
-
-.product-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  table-layout: fixed;
-}
-
-.product-table th,
-.product-table td {
-  padding: 12px; /* Reduced from 16px */
-  text-align: left;
-}
-
-.product-table th {
-  font-weight: 600;
-  background-color: #f0f2ff;
-  color: #4a5568;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  border-bottom: 2px solid #e2e8f0;
-}
-
-/* Add this new CSS rule for column widths */
-.product-table th:nth-child(1) { width: 15%; } /* Title */
-.product-table th:nth-child(2) { width: 20%; } /* Description */
-.product-table th:nth-child(3) { width: 8%; }  /* Price */
-.product-table th:nth-child(4) { width: 8%; }  /* Rating */
-.product-table th:nth-child(5) { width: 12%; } /* Brand */
-.product-table th:nth-child(6) { width: 12%; } /* Category */
-.product-table th:nth-child(7) { width: 15%; } /* Photo */
-
-.product-table tr:nth-child(even) {
-  background-color: #f8faff;
-}
-
-.product-table tr:hover {
-  background-color: #eef2ff;
-}
-
-.sortable-header {
-  cursor: pointer;
-  user-select: none;
-  position: relative;
-  transition: all 0.2s;
-}
-
-.sortable-header:hover {
-  background-color: #e4e9ff;
-  color: #5a67d8;
-}
-
-.sort-icon {
-  margin-left: 4px;
-  font-size: 12px;
-  color: #6366f1;
-}
-
-.description-cell {
-  max-width: 200px; /* Reduced from 300px */
-  white-space: normal; /* Change this line to allow text to wrap */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #4b5563;
-}
-
-
-.badge {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 9999px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-}
-
-.badge.red {
-  background: linear-gradient(135deg, #ff9a9e, #fad0c4);
-  color: #c53030;
-}
-
-.badge.green {
-  background: linear-gradient(135deg, #84fab0, #8fd3f4);
-  color: #276749;
-}
-
-.product-image {
-  object-fit: cover;
-  border-radius: 8px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s ease;
-  width: 80px; /* Add this line */
-  height: 80px; /* Add this line */
-}
-
-.product-image:hover {
-  transform: scale(1.05);
-}
-
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 20px;
-  gap: 16px;
-  background: linear-gradient(135deg, #1e338d, #180037);
-}
-
-.pagination-button {
-  padding: 8px 16px;
-  border: none;
-  background-color: white;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  font-family: 'Poppins', sans-serif;
-  font-weight: 500;
-  color: #4c51bf;
-  transition: all 0.2s;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.pagination-button:hover:not(:disabled) {
-  background-color: #f0f4ff;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.15);
-}
-
-.pagination-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.page-info {
-  font-size: 14px;
-  font-weight: 600;
-  color: white;
-  background-color: rgba(255, 255, 255, 0.2);
-  padding: 6px 12px;
-  border-radius: 8px;
-}
-
-.empty-message {
-  text-align: center;
-  padding: 40px;
-  color: #6b7280;
-  font-style: italic;
-}
-</style>

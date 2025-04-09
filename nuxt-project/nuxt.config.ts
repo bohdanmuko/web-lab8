@@ -2,5 +2,9 @@
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
   devtools: { enabled: true },
-  modules: ['@nuxt/ui', '@vueuse/nuxt', '@nuxtjs/tailwindcss']
+  modules: ['@nuxt/ui', '@vueuse/nuxt', '@nuxt/eslint'],
+  css: ['~/assets/css/main.css'],
+  future: {
+    compatibilityVersion: 4
+  }
 })
