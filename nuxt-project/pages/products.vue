@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, resolveComponent, onMounted, computed, ref } from 'vue'
+import { h, resolveComponent, onMounted, computed, ref, watch } from 'vue'
 import { upperFirst } from 'scule'
 import type { TableColumn } from '@nuxt/ui'
 
@@ -42,15 +42,69 @@ const rowsPerPage = ref(10)
 // Динамічний список варіантів для кількості рядків на сторінці
 const rowsPerPageOptions = [5, 10, 20, 50]
 
-// Обчислюваний список даних для поточної сторінки
+// Стан сортування
+const sorting = ref([
+  {
+    id: 'title',
+    desc: false
+  }
+])
+
+// Відсортовані дані (всі продукти)
+const sortedData = computed(() => {
+  // Якщо немає сортування або немає даних, повертаємо оригінальні дані
+  if (!sorting.value.length || !data.value.length) {
+    return data.value
+  }
+
+  // Клонуємо масив, щоб не змінювати оригінальні дані
+  return [...data.value].sort((a, b) => {
+    // Отримуємо поточне сортування
+    const sort = sorting.value[0]!
+    const columnId = sort.id
+    const desc = sort.desc
+
+    // Отримуємо значення для порівняння
+    let valueA = a[columnId as keyof Product]
+    let valueB = b[columnId as keyof Product]
+
+    // Спеціальна обробка для числових значень
+    if (typeof valueA === 'number' && typeof valueB === 'number') {
+      return desc ? valueB - valueA : valueA - valueB
+    }
+
+    // Для рядків використовуємо localeCompare
+    if (typeof valueA === 'string' && typeof valueB === 'string') {
+      return desc ? valueB.localeCompare(valueA) : valueA.localeCompare(valueB)
+    }
+
+    // Для інших типів даних
+    if (valueA === valueB) {
+      return 0
+    }
+
+    // Якщо значення не рівні, порівнюємо їх
+    if (valueA > valueB) {
+      return desc ? -1 : 1
+    }
+    return desc ? 1 : -1
+  })
+})
+
+// Обчислюваний список даних для поточної сторінки (тепер використовує відсортовані дані)
 const paginatedData = computed(() => {
   const start = (currentPage.value - 1) * rowsPerPage.value
   const end = start + rowsPerPage.value
-  return data.value.slice(start, end)
+  return sortedData.value.slice(start, end)
 })
 
 // Загальна кількість сторінок
 const totalPages = computed(() => Math.ceil(data.value.length / rowsPerPage.value))
+
+// Скидаємо сторінку на першу при зміні сортування
+watch(sorting, () => {
+  currentPage.value = 1
+})
 
 // Функція для зміни сторінки
 function changePage(page: number) {
@@ -127,7 +181,22 @@ const columns: TableColumn<Product>[] = [
   },
   {
     accessorKey: 'title',
-    header: 'Назва',
+    header: ({ column }) => {
+      const isSorted = column.getIsSorted()
+
+      return h(UButton, {
+        color: 'neutral',
+        variant: 'ghost',
+        label: 'Назва',
+        icon: isSorted
+            ? isSorted === 'asc'
+                ? 'i-lucide-arrow-up-narrow-wide'
+                : 'i-lucide-arrow-down-wide-narrow'
+            : 'i-lucide-arrow-up-down',
+        class: '-mx-2.5',
+        onClick: () => column.toggleSorting(column.getIsSorted() === 'asc')
+      })
+    },
     cell: ({ row }) => h('div', { class: 'font-medium' }, row.getValue('title'))
   },
   {
@@ -137,7 +206,22 @@ const columns: TableColumn<Product>[] = [
   },
   {
     accessorKey: 'price',
-    header: 'Ціна',
+    header: ({ column }) => {
+      const isSorted = column.getIsSorted()
+
+      return h(UButton, {
+        color: 'neutral',
+        variant: 'ghost',
+        label: 'Ціна',
+        icon: isSorted
+            ? isSorted === 'asc'
+                ? 'i-lucide-arrow-up-narrow-wide'
+                : 'i-lucide-arrow-down-wide-narrow'
+            : 'i-lucide-arrow-up-down',
+        class: '-mx-2.5',
+        onClick: () => column.toggleSorting(column.getIsSorted() === 'asc')
+      })
+    },
     cell: ({ row }) => {
       const price = Number.parseFloat(row.getValue('price'))
       const formatted = new Intl.NumberFormat('uk-UA', {
@@ -149,7 +233,22 @@ const columns: TableColumn<Product>[] = [
   },
   {
     accessorKey: 'rating',
-    header: 'Оцінка',
+    header: ({ column }) => {
+      const isSorted = column.getIsSorted()
+
+      return h(UButton, {
+        color: 'neutral',
+        variant: 'ghost',
+        label: 'Оцінка',
+        icon: isSorted
+            ? isSorted === 'asc'
+                ? 'i-lucide-arrow-up-narrow-wide'
+                : 'i-lucide-arrow-down-wide-narrow'
+            : 'i-lucide-arrow-up-down',
+        class: '-mx-2.5',
+        onClick: () => column.toggleSorting(column.getIsSorted() === 'asc')
+      })
+    },
     cell: ({ row }) => {
       const rating = Number(row.getValue('rating'))
       const textColor = rating >= 4.5 ? 'text-green-500' : 'text-red-500'
@@ -158,12 +257,42 @@ const columns: TableColumn<Product>[] = [
   },
   {
     accessorKey: 'brand',
-    header: 'Бренд',
+    header: ({ column }) => {
+      const isSorted = column.getIsSorted()
+
+      return h(UButton, {
+        color: 'neutral',
+        variant: 'ghost',
+        label: 'Бренд',
+        icon: isSorted
+            ? isSorted === 'asc'
+                ? 'i-lucide-arrow-up-narrow-wide'
+                : 'i-lucide-arrow-down-wide-narrow'
+            : 'i-lucide-arrow-up-down',
+        class: '-mx-2.5',
+        onClick: () => column.toggleSorting(column.getIsSorted() === 'asc')
+      })
+    },
     cell: ({ row }) => h('div', {}, row.getValue('brand'))
   },
   {
     accessorKey: 'category',
-    header: 'Категорія',
+    header: ({ column }) => {
+      const isSorted = column.getIsSorted()
+
+      return h(UButton, {
+        color: 'neutral',
+        variant: 'ghost',
+        label: 'Категорія',
+        icon: isSorted
+            ? isSorted === 'asc'
+                ? 'i-lucide-arrow-up-narrow-wide'
+                : 'i-lucide-arrow-down-wide-narrow'
+            : 'i-lucide-arrow-up-down',
+        class: '-mx-2.5',
+        onClick: () => column.toggleSorting(column.getIsSorted() === 'asc')
+      })
+    },
     cell: ({ row }) => h(UBadge, { class: 'capitalize', variant: 'subtle', color: 'info' }, () => row.getValue('category'))
   },
   {
@@ -176,47 +305,6 @@ const columns: TableColumn<Product>[] = [
       style: 'width: 100px; height: 100px;'
     }),
     enableSorting: false
-  },
-  {
-    id: 'actions', // Дії (три точки)
-    enableHiding: false,
-    cell: ({ row }) => {
-      const items = [
-        { type: 'label', label: 'Дії' },
-        {
-          label: 'Копіювати ID',
-          onSelect() {
-            navigator.clipboard.writeText(row.original.id.toString())
-            toast.add({
-              title: 'ID скопійовано!',
-              color: 'success',
-              icon: 'i-lucide-circle-check'
-            })
-          }
-        },
-        {
-          label: row.getIsExpanded() ? 'Згорнути' : 'Розгорнути',
-          onSelect() {
-            row.toggleExpanded()
-          }
-        },
-        { type: 'separator' },
-        { label: 'Переглянути деталі' },
-        { label: 'Додати в кошик' }
-      ]
-
-      return h('div', { class: 'text-right' }, h(UDropdownMenu, {
-        'content': { align: 'end' },
-        items,
-        'aria-label': 'Actions dropdown'
-      }, () => h(UButton, {
-        'icon': 'i-lucide-ellipsis-vertical',
-        'color': 'neutral',
-        'variant': 'ghost',
-        'class': 'ml-auto',
-        'aria-label': 'Actions dropdown'
-      })))
-    }
   }
 ]
 
@@ -366,6 +454,7 @@ const skeletonRows = Array(10).fill(0).map((_, i) => i)
         ref="table"
         :data="paginatedData"
         :columns="columns"
+        v-model:sorting="sorting"
         sticky
         class="h-full"
     >
