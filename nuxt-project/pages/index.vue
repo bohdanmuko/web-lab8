@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { h, resolveComponent } from 'vue'
 import { useHead } from '#imports'
+import BlogPosts from "~/pages/posts/BlogPosts.vue";
+import BlogPostsUi from "~/pages/posts/BlogPostsUi.vue";
 
 useHead({
   title: 'Головна сторінка'
@@ -16,15 +18,37 @@ const UCard = resolveComponent('UCard')
     <!-- UCard з вирівнюванням тексту по центру -->
     <UCard class="w-96 p-6 text-center">
       <h1 class="text-2xl font-semibold mb-4">Головна сторінка</h1>
-      <!-- Кнопка із доданим фоном, градієнтним ефектом та анімацією -->
-      <NuxtLink to="/products">
-        <UButton
-            variant="flat"
-            class="rounded-lg py-3 px-5 shadow-md transition-transform transform hover:scale-105 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
-        >
-          Перейти до списку продуктів
-        </UButton>
-      </NuxtLink>
+
+      <!-- Обгортка для кнопок зі space-y-4 -->
+      <div class="flex flex-col items-center space-y-4">
+        <NuxtLink to="/products">
+          <UButton
+              variant="flat"
+              class="rounded-lg py-3 px-5 shadow-md transition-transform transform hover:scale-105 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
+          >
+            Перейти до списку продуктів
+          </UButton>
+        </NuxtLink>
+
+        <NuxtLink to="/posts/BlogPosts">
+          <UButton
+              variant="flat"
+              class="rounded-lg py-3 px-5 shadow-md transition-transform transform hover:scale-105 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
+          >
+            Перейти до BlogPosts
+          </UButton>
+        </NuxtLink>
+
+        <NuxtLink to="/posts/BlogPostsUi">
+          <UButton
+              variant="flat"
+              class="rounded-lg py-3 px-5 shadow-md transition-transform transform hover:scale-105 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
+          >
+            Перейти до BlogPostsUi
+          </UButton>
+        </NuxtLink>
+      </div>
     </UCard>
   </div>
 </template>
+
