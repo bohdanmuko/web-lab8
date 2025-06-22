@@ -47,6 +47,15 @@ const UCard = resolveComponent('UCard')
             Перейти до BlogPostsUi
           </UButton>
         </NuxtLink>
+
+        <NuxtLink to="/categories/BlogCategoriesUi">
+          <UButton
+              variant="flat"
+              class="rounded-lg py-3 px-5 shadow-md transition-transform transform hover:scale-105 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
+          >
+            Перейти до BlogCategoriesUi
+          </UButton>
+        </NuxtLink>
       </div>
     </UCard>
   </div>

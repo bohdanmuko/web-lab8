@@ -1,7 +1,7 @@
 <template>
   <div class="container mx-auto p-4">
     <div class="flex justify-between items-center mb-6">
-      <h1 class="text-3xl font-bold">Блог пости</h1>
+      <h1 class="text-3xl font-bold">Категорії</h1>
       <div class="flex items-center gap-2">
         <UButton
             as="a"
@@ -17,21 +17,28 @@
             color="primary"
             icon="i-heroicons-plus"
         >
-          Додати пост
+          Додати категорію
         </UButton>
       </div>
     </div>
 
     <UCard>
       <UTable
-          :data="posts"
+          :data="categories"
           :columns="columns"
           :loading="status === 'pending'"
           stripe
           row-key="id"
           class="w-full"
       >
-        <!-- слот для колонки Actions -->
+        <template #parentTitle-cell="{ row }">
+          {{ row.original.parentTitle }}
+        </template>
+        <template #description-cell="{ row }">
+          <span class="block truncate max-w-xs">
+            {{ row.original.description || '—' }}
+          </span>
+        </template>
         <template #action-cell="{ row }">
           <UDropdownMenu :items="getDropdownActions(row.original)">
             <UButton
@@ -75,25 +82,24 @@
 </template>
 
 <script setup lang="ts">
-import { h, ref, computed, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { TableColumn, DropdownMenuItem } from '@nuxt/ui'
 import { useClipboard } from '@vueuse/core'
 
 // Тип з API
-interface Blog {
+interface Category {
   id: number
   title: string
-  published_at: string | null
-  user?: { name: string }
-  category?: { title: string }
+  description: string | null
+  parent_id: number | null
 }
 
-interface PostTableRow {
+// Тип для таблиці
+interface CategoryTableRow {
   id: number
   title: string
-  author: string
-  category: string
-  publishedAt: string
+  description: string
+  parentTitle: string
 }
 
 const toast = useToast()
@@ -102,55 +108,58 @@ const { copy } = useClipboard()
 const page = ref(1)
 const itemsPerPage = ref(5)
 
-const { data: postsResponse, status, refresh } = await useFetch<{ data: Blog[] }>(
-    'http://localhost/api/blog/posts',
-    { key: 'table-posts' }
+// ——— 1. Завантажуємо сирі дані ———
+const { data: res, status, refresh } = await useFetch<{ data: Category[] }>(
+    'http://localhost/api/categories',
+    { key: 'table-categories' }
 )
 
-const allPosts = computed<PostTableRow[]>(() =>
-    postsResponse.value?.data.map(post => ({
-      id: post.id,
-      title: post.title,
-      author: post.user?.name ?? 'Невідомо',
-      category: post.category?.title ?? 'Без категорії',
-      publishedAt: post.published_at
-          ? new Date(post.published_at).toLocaleDateString('uk-UA')
-          : 'Не опубліковано'
-    })) ?? []
-)
-
-const total = computed(() => allPosts.value.length)
-const posts = computed(() => {
-  const start = (page.value - 1) * itemsPerPage.value
-  return allPosts.value.slice(start, start + itemsPerPage.value)
+// ——— 2. Будуємо мапу ID → title для швидкого lookup ———
+const categoryMap = computed<Map<number,string>>(() => {
+  const m = new Map<number,string>()
+  for (const cat of res.value?.data || []) {
+    m.set(cat.id, cat.title)
+  }
+  return m
 })
 
-const columns: TableColumn<PostTableRow>[] = [
-  { accessorKey: 'id', header: '#' },
-  { accessorKey: 'author', header: 'Автор' },
-  { accessorKey: 'category', header: 'Категорія' },
-  {
-    accessorKey: 'title',
-    header: 'Заголовок',
-    cell: ({ row }) =>
-        h(
-            'a',
-            {
-              href: `${row.original.id}`,
-              class: 'text-blue-600 hover:text-blue-800 underline'
-            },
-            row.original.title
-        )
-  },
-  { accessorKey: 'publishedAt', header: 'Дата публікації' },
+// ——— 3. Трансформуємо в рядки таблиці з підставленням parentTitle ———
+const allCategories = computed<CategoryTableRow[]>(() =>
+    (res.value?.data || []).map(cat => ({
+      id: cat.id,
+      title: cat.title,
+      description: cat.description ?? '',
+      parentTitle:
+          cat.parent_id === null
+              ? 'Корінь'                                       // або «—», залежить від вашої логіки
+              : (categoryMap.value.get(cat.parent_id) || '—')
+    }))
+)
+
+const total = computed(() => allCategories.value.length)
+
+const categories = computed(() => {
+  const start = (page.value - 1) * itemsPerPage.value
+  return allCategories.value.slice(start, start + itemsPerPage.value)
+})
+
+
+// Колонки
+const columns: TableColumn<CategoryTableRow>[] = [
+  { accessorKey: 'id', header: 'ID' },
+  { accessorKey: 'parentTitle', header: 'Батьківська категорія', id: 'parentTitle' },
+  { accessorKey: 'title', header: 'Назва' },
+  { accessorKey: 'description', header: 'Опис', id: 'description' },
   { id: 'action' }
 ]
 
-watch(allPosts, () => {
+// Скидаємо сторінку при зміні даних
+watch(allCategories, () => {
   page.value = 1
 })
 
-function getDropdownActions(row: PostTableRow): DropdownMenuItem[][] {
+// Дії
+function getDropdownActions(row: CategoryTableRow): DropdownMenuItem[][] {
   return [
     [
       {
@@ -158,7 +167,7 @@ function getDropdownActions(row: PostTableRow): DropdownMenuItem[][] {
         icon: 'i-lucide-copy',
         onSelect: () => {
           copy(row.id.toString())
-          toast.add({ title: 'ID посту скопійовано', color: 'success' })
+          toast.add({ title: 'ID категорії скопійовано', color: 'success' })
         }
       }
     ],
@@ -167,7 +176,7 @@ function getDropdownActions(row: PostTableRow): DropdownMenuItem[][] {
         label: 'Редагувати',
         icon: 'i-lucide-edit',
         onSelect: () => {
-          window.location.href = `/posts/${row.id}/edit`
+          window.location.href = `/categories/${row.id}/edit`
         }
       },
       {
@@ -176,11 +185,11 @@ function getDropdownActions(row: PostTableRow): DropdownMenuItem[][] {
         color: 'error',
         onSelect: async () => {
           try {
-            await $fetch(`http://localhost/api/posts/${row.id}`, { method: 'DELETE' })
-            toast.add({ title: 'Пост видалено', color: 'success' })
-            await refresh()
+            await $fetch(`http://localhost/api/categories/${row.id}`, { method: 'DELETE' })
+            toast.add({ title: 'Категорію видалено', color: 'success' })
+            await refresh() // оновити useFetch
           } catch {
-            toast.add({ title: 'Помилка при видаленні посту', color: 'error' })
+            toast.add({ title: 'Помилка при видаленні', color: 'error' })
           }
         }
       }
